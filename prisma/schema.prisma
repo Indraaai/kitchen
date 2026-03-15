@@ -2,20 +2,27 @@ generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
 }
+
 datasource db {
   provider = "postgresql"
 }
 
+// ==========================================
+// 👤 1. USER & ACCESS MANAGEMENT
+// ==========================================
+
 model Role {
-  id        Int      @id @default(autoincrement())
-  nameRoles String   @unique @map("name_roles")
-  users     User[]
+  id        Int    @id @default(autoincrement())
+  nameRoles String @unique @map("name_roles")
+
+  users User[]
 
   @@map("roles")
 }
 
 model User {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String?
   email     String   @unique
   password  String
   roleId    Int?     @map("role_id")
@@ -23,7 +30,228 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  role      Role?    @relation(fields: [roleId], references: [id])
+  // Relasi
+  role             Role?          @relation(fields: [roleId], references: [id])
+  detail           DetailUser?
+  addresses        Address[]
+  cart             Cart?
+  orders           Order[]
+  serviceOrders    ServiceOrder[]
+  verifiedPayments Payment[]      @relation("AdminVerifier") // Relasi khusus untuk admin yang verifikasi pembayaran
+  inventoryLogs    InventoryLog[]
 
   @@map("users")
+}
+
+model DetailUser {
+  id     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId String  @unique @map("user_id") @db.Uuid
+  phone  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("detail_users")
+}
+
+model Address {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  phone         String?
+  alamatLengkap String   @map("alamat_lengkap") @db.Text
+  city          String
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("Update_at") // Sesuai ERD
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@map("addresses")
+}
+
+// ==========================================
+// 📦 2. PRODUCT CATALOG & INVENTORY
+// ==========================================
+
+model ProductCategory {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  products Product[]
+
+  @@map("products_categories")
+}
+
+model Product {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?  @db.Text
+  price       Decimal  @db.Decimal(15, 2)
+  stock       Int      @default(0) @map("Stock")
+  categoryId  Int?     @map("category_id")
+  createdBy   String?  @map("created_by") @db.Uuid
+  unitSatuan  String?  @map("unit_satuan")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relasi
+  category      ProductCategory? @relation(fields: [categoryId], references: [id])
+  images        ProductImage[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  inventoryLogs InventoryLog[]
+
+  @@map("products")
+}
+
+model ProductImage {
+  id        Int      @id @default(autoincrement())
+  productId String   @map("product_id") @db.Uuid
+  imageUrl  String   @map("image_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_images")
+}
+
+model InventoryLog {
+  id        Int      @id @default(autoincrement())
+  productId String   @map("product_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String // IN / OUT
+  quantity  Int
+  note      String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@map("inventory_logs")
+}
+
+// ==========================================
+// 🛒 3. SHOPPING CART
+// ==========================================
+
+model Cart {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @unique @map("User_id") @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        Int      @id @default(autoincrement())
+  cartId    String   @map("cart_id") @db.Uuid // Typo 'card_id' dari ERD otomatis saya perbaiki di sini
+  productId String   @map("product_id") @db.Uuid
+  quantity  Int      @default(1)
+  notes     String?  @db.Text
+  createdAt DateTime @default(now()) @map("createdAt")
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+// ==========================================
+// 🛠️ 4. SERVICES ORDER
+// ==========================================
+
+model Service {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?  @db.Text
+  price       Decimal  @db.Decimal(15, 2)
+  createdBy   String?  @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  orders ServiceOrder[]
+
+  @@map("services")
+}
+
+model ServiceOrder {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  serviceId    String   @map("service_id") @db.Uuid
+  price        Decimal  @db.Decimal(15, 2) // Snapshot harga jasa saat dibooking
+  scheduleDate DateTime @map("schedule_date")
+  description  String?  @db.Text
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user     User      @relation(fields: [userId], references: [id])
+  service  Service   @relation(fields: [serviceId], references: [id])
+  payments Payment[] // Relasi ke pembayaran
+
+  @@map("service_orders")
+}
+
+// ==========================================
+// 🧾 5. PHYSICAL ORDERS & PAYMENTS
+// ==========================================
+
+model Order {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  addressId  String?  @map("address_id") @db.Uuid
+  status     String   @default("PENDING")
+  totalPrice Decimal  @map("total_price") @db.Decimal(15, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user     User        @relation(fields: [userId], references: [id])
+  address  Address?    @relation(fields: [addressId], references: [id])
+  items    OrderItem[]
+  payments Payment[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   String  @map("order_id") @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  quantity  Int
+  price     Decimal @db.Decimal(15, 2)
+  subtotal  Decimal @db.Decimal(15, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model Payment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  // 💡 SMART RELATION: Kolom opsional agar bisa bayar Produk ATAU Jasa
+  orderId        String? @map("order_id") @db.Uuid
+  serviceOrderId String? @map("service_order_id") @db.Uuid
+
+  paymentMethod String    @map("payment_method")
+  status        String    @default("PENDING")
+  amount        Decimal   @db.Decimal(15, 2)
+  bukti         String?   @db.Text
+  verifiedBy    String?   @map("verified_by") @db.Uuid
+  verifiedAt    DateTime? @map("verified_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("update_at")
+
+  // Relasi
+  order        Order?        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  serviceOrder ServiceOrder? @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  verifier     User?         @relation("AdminVerifier", fields: [verifiedBy], references: [id])
+
+  @@map("payments")
 }
